@@ -148,9 +148,10 @@ def ask_question(question: str, verbose: bool = True, provider: str = "auto") ->
         import os
         if os.sep in source or '/' in source:
             source = os.path.basename(source)
-        # Remove temp file prefixes like 'tmp_3bdghhx'
-        if source.startswith('tmp') and '_' in source:
-            source = "Uploaded Document"
+            
+        # Clean up any potential temp prefixes if they still exist (though new ingestion method prevents this)
+        # We prefer the actual filename now
+
 
         citation = f"[Source: {source}"
         if page:

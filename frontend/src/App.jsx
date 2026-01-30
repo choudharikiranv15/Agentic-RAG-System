@@ -44,6 +44,32 @@ export default function App() {
     scrollToBottom();
   }, [messages, isThinking]);
 
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  const fetchDocuments = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/documents`);
+      setFiles(res.data.documents || []);
+    } catch (err) {
+      console.error("Failed to fetch documents", err);
+    }
+  };
+
+  const handleDeleteFile = async (filename, e) => {
+    e.stopPropagation(); // Prevent triggering other clicks
+    if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
+
+    try {
+      await axios.delete(`${API_URL}/documents/${filename}`);
+      setFiles(prev => prev.filter(f => f !== filename));
+    } catch (err) {
+      console.error("Failed to delete file", err);
+      alert("Failed to delete file");
+    }
+  };
+
   // File Upload
   const handleFileUpload = async (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -57,7 +83,7 @@ export default function App() {
 
     try {
       await axios.post(`${API_URL}/upload`, formData);
-      setFiles(prev => [...prev, ...selectedFiles.map(f => f.name)]);
+      await fetchDocuments(); // Refresh list from server
       setUploadStatus('success');
       setTimeout(() => setUploadStatus('idle'), 2000);
     } catch (error) {
@@ -163,13 +189,22 @@ export default function App() {
           {/* Files List */}
           <div className="space-y-1">
             {files.map((file, i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2.5 text-sm text-[#CCC] hover:bg-[#2F2F2F] rounded-lg group transition-colors cursor-default">
-                <FileText size={16} className="shrink-0 text-[#666] group-hover:text-blue-400 transition-colors" />
-                <span className="truncate flex-1">{file}</span>
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5 text-sm text-[#CCC] hover:bg-[#2F2F2F] rounded-lg group transition-colors cursor-default justify-between">
+                <div className="flex items-center gap-3 truncate">
+                  <FileText size={16} className="shrink-0 text-[#666] group-hover:text-blue-400 transition-colors" />
+                  <span className="truncate">{file}</span>
+                </div>
+                <button
+                  onClick={(e) => handleDeleteFile(file, e)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded transition-all text-[#666]"
+                  title="Delete file"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
             {files.length === 0 && (
-              <p className="text-xs text-[#555] px-3 py-2 italic text-center">No documents uploaded yet</p>
+              <p className="text-xs text-[#555] px-3 py-2 italic text-center">No documents uploaded</p>
             )}
           </div>
         </div>
@@ -239,20 +274,25 @@ export default function App() {
 
                       {/* Citations Block */}
                       {msg.sources && msg.sources.length > 0 && (
-                        <div className="mt-6">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="h-px bg-[#333] flex-1"></div>
-                            <span className="text-xs font-medium text-[#666] uppercase tracking-wider">Sources</span>
-                            <div className="h-px bg-[#333] flex-1"></div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {msg.sources.map((s, i) => (
-                              <div key={i} className="flex items-center gap-1.5 bg-[#2A2A2A] border border-[#333] px-2.5 py-1.5 rounded-md text-xs text-[#BBB] hover:border-blue-500/30 transition-colors">
-                                <FileText size={10} className="text-[#666]" />
-                                {s.replace('[Source: ', '').replace(']', '')}
+                        <div className="mt-4">
+                          <details className="group">
+                            <summary className="list-none cursor-pointer inline-flex items-center gap-2 text-xs font-medium text-[#888] hover:text-[#CCC] transition-colors select-none">
+                              <div className="flex items-center gap-2 bg-[#1e1e1e] border border-[#333] px-3 py-1.5 rounded-lg hover:bg-[#2a2a2a] hover:border-[#444] transition-all">
+                                <Sparkles size={12} className="text-blue-400" />
+                                <span>{msg.sources.length} Sources Verified</span>
+                                <ChevronRight size={12} className="group-open:rotate-90 transition-transform text-[#666]" />
                               </div>
-                            ))}
-                          </div>
+                            </summary>
+
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 pl-1 animate-in slide-in-from-top-2 duration-200">
+                              {msg.sources.map((s, i) => (
+                                <div key={i} className="flex items-start gap-2 bg-[#252525] border border-[#333] p-2 rounded text-xs text-[#CCC]">
+                                  <FileText size={14} className="shrink-0 text-[#666] mt-0.5" />
+                                  <span className="truncate leading-relaxed">{s.replace('[Source: ', '').replace(']', '')}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
                         </div>
                       )}
                     </div>

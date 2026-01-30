@@ -92,6 +92,13 @@ def ingest_files(file_paths: List[str]) -> dict:
             stats["files_processed"] += 1
             stats["total_documents"] += len(docs)
             
+            # Post-processing: Add clean filename to metadata for easier retrieval/deletion
+            clean_name = os.path.basename(file_path)
+            for doc in docs:
+                doc.metadata["filename"] = clean_name
+                # Also ensure source is readable if possible, but filename is key
+                doc.metadata["source"] = clean_name
+            
         except Exception as e:
             print(f"[ERROR] Failed to load {file_path}: {e}")
             stats["files_failed"] += 1

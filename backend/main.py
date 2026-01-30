@@ -112,15 +112,26 @@ async def upload_files(files: List[UploadFile] = File(...)):
                     detail=f"Unsupported file type: {ext}. Supported: PDF, DOCX, PPTX, XLSX, TXT"
                 )
             
-            # Save to temp file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-            content = await file.read()
-            temp_file.write(content)
-            temp_file.close()
-            temp_files.append(temp_file.name)
+            # Create a user-specific temp directory for this upload
+            upload_dir = tempfile.mkdtemp()
+            temp_files.append(upload_dir) # Keep track to clean up later
+            
+            # Save file with ORIGINAL filename
+            clean_filename = os.path.basename(file.filename)
+            file_path = os.path.join(upload_dir, clean_filename)
+            
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            
+            temp_files.append(file_path) # Add to list for ingestion
         
+        # Filter out directories from the ingestion list (we only ingest files)
+        files_to_ingest = [f for f in temp_files if os.path.isfile(f)]
+        directories_to_clean = [f for f in temp_files if os.path.isdir(f)]
+
         # Ingest files
-        stats = ingest_files(temp_files)
+        stats = ingest_files(files_to_ingest)
         
         return {
             "status": "success",
@@ -132,10 +143,14 @@ async def upload_files(files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
     
     finally:
-        # Clean up temp files
-        for temp_file in temp_files:
+        # Clean up temp files and directories
+        for path in temp_files:
             try:
-                os.unlink(temp_file)
+                if os.path.isfile(path):
+                    os.unlink(path)
+                elif os.path.isdir(path):
+                    import shutil
+                    shutil.rmtree(path)
             except:
                 pass
 
@@ -275,6 +290,60 @@ async def get_document_stats():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+
+# List documents endpoint
+@app.get("/documents")
+async def list_documents():
+    """
+    List all ingested documents.
+    """
+    try:
+        if not os.path.exists(CHROMA_DB_DIR):
+            return {"documents": []}
+
+        client = get_chroma_client()
+        collection = client.get_or_create_collection("rag_collection")
+        
+        # Get all metadata
+        result = collection.get(include=['metadatas'])
+        metadatas = result['metadatas']
+        
+        # Extract unique filenames
+        unique_files = set()
+        for meta in metadatas:
+            if meta and 'filename' in meta:
+                unique_files.add(meta['filename'])
+            elif meta and 'source' in meta:
+                 # Fallback for old data
+                 unique_files.add(os.path.basename(meta['source']))
+        
+        return {"documents": list(unique_files)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+
+
+# Delete document endpoint
+@app.delete("/documents/{filename}")
+async def delete_document(filename: str):
+    """
+    Delete a specific document by filename.
+    """
+    try:
+        client = get_chroma_client()
+        collection = client.get_or_create_collection("rag_collection")
+        
+        # Delete by metadata filename
+        # Note: We try both 'filename' field and 'source' field for backward compatibility
+        collection.delete(where={"filename": filename})
+        collection.delete(where={"source": filename})
+        
+        return {"status": "success", "message": f"Deleted {filename}"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+
 
 
 # Clear database endpoint
