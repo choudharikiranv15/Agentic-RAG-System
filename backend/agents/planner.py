@@ -29,48 +29,12 @@ This is AGENTIC because the LLM decides the steps autonomously!
 """
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import PromptTemplate
+from langchain.agents import AgentExecutor, initialize_agent, AgentType
 from backend.agents.retriever import retrieve_tool
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
-
-# Define the ReAct Prompt Template
-# This tells the agent HOW to think and act
-REACT_PROMPT = """You are a helpful AI assistant with access to a document search tool.
-
-Answer questions based ONLY on the information you retrieve from the documents.
-If you cannot find relevant information, say so - do not make up answers.
-
-You have access to the following tools:
-
-{tools}
-
-Use the following format:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-
-IMPORTANT: 
-- Always cite your sources (mention the document name)
-- If you find multiple relevant pieces of information, synthesize them
-- Be concise but complete
-
-Begin!
-
-Question: {input}
-Thought:{agent_scratchpad}"""
-
-prompt = PromptTemplate.from_template(REACT_PROMPT)
 
 
 def get_agent_executor():
@@ -104,13 +68,11 @@ def get_agent_executor():
     # Tools available to the agent
     tools = [retrieve_tool]
     
-    # Create the ReAct agent
-    agent = create_react_agent(llm, tools, prompt)
-    
-    # Wrap in executor (handles the thought loop)
-    agent_executor = AgentExecutor(
-        agent=agent,
+    # Create the agent using initialize_agent (compatible with more LangChain versions)
+    agent_executor = initialize_agent(
         tools=tools,
+        llm=llm,
+        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         verbose=True,  # Print the thinking process
         handle_parsing_errors=True,  # Gracefully handle errors
         max_iterations=5,  # Prevent infinite loops

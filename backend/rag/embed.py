@@ -31,16 +31,32 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_embeddings():
+def get_embeddings(use_local=True):
     """
     Returns the embedding model.
     
     Strategy:
-    1. Try Google Gemini first (if API key exists)
-    2. Fall back to local HuggingFace model
+    1. Use local HuggingFace by default (no API limits!)
+    2. Can switch to Google Gemini if needed
+    
+    Args:
+        use_local: If True, use local embeddings. If False, try Google first.
     
     This ensures the system works even without an API key!
     """
+    
+    # For initial testing, use local embeddings to avoid rate limits
+    if use_local:
+        print("💻 Using local HuggingFace embeddings (all-MiniLM-L6-v2)")
+        print("   First run will download the model (~80MB)")
+        
+        return HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'},  # Use 'cuda' if you have GPU
+            encode_kwargs={'normalize_embeddings': True}  # Improves similarity search
+        )
+    
+    # Try Google Gemini if requested
     api_key = os.getenv("GOOGLE_API_KEY")
     
     if api_key:

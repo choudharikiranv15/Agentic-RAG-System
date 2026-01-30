@@ -23,11 +23,13 @@ Chunk 2: "...The CEO is John Smith. He has 20 years of experience..."
          ↑ Overlap ensures we don't lose the connection!
 """
 
+
 from typing import List
 import os
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+
 
 from backend.rag.embed import get_embeddings
 from backend.db.chroma import get_chroma_client, CHROMA_DB_DIR
