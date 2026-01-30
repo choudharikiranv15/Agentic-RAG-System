@@ -1,0 +1,309 @@
+"""
+FastAPI Backend for Agentic RAG System
+
+This is the main API server that connects the frontend to the RAG backend.
+
+Endpoints:
+- POST /upload: Upload and ingest documents
+- POST /chat: Ask questions and get answers (with streaming support)
+- GET /status: Health check
+- GET /documents/stats: Get document statistics
+- DELETE /clear: Clear the vector database
+"""
+
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from typing import List, Optional
+import os
+import tempfile
+import asyncio
+import json
+
+from backend.rag.ingest import ingest_files
+from backend.agents.planner import ask_question
+from backend.db.chroma import get_chroma_client, CHROMA_DB_DIR
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Agentic RAG System",
+    description="AI-powered document Q&A system with agentic reasoning",
+    version="1.0.0"
+)
+
+# Configure CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Request/Response Models
+class ChatRequest(BaseModel):
+    question: str
+    provider: str = "auto"  # "gemini", "openrouter", or "auto"
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: List[str]
+    context: str
+
+
+class StatusResponse(BaseModel):
+    status: str
+    message: str
+
+
+# Root endpoint
+@app.get("/")
+async def root():
+    """Root endpoint - API information"""
+    return {
+        "name": "Agentic RAG System API",
+        "version": "1.0.0",
+        "status": "running",
+        "endpoints": {
+            "POST /upload": "Upload documents (PDF, DOCX, PPTX, XLSX, TXT)",
+            "POST /chat": "Ask questions (JSON response)",
+            "POST /chat/stream": "Ask questions (SSE streaming)",
+            "GET /status": "Health check",
+            "GET /documents/stats": "Get document statistics",
+            "DELETE /clear": "Clear vector database"
+        }
+    }
+
+
+# Health check endpoint
+@app.get("/status", response_model=StatusResponse)
+async def status():
+    """Health check endpoint"""
+    return StatusResponse(
+        status="healthy",
+        message="Agentic RAG System is running"
+    )
+
+
+# Upload endpoint
+@app.post("/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    """
+    Upload and ingest documents into the vector database.
+    
+    Supports: PDF, DOCX, PPTX, XLSX, TXT
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    temp_files = []
+    
+    try:
+        # Save uploaded files temporarily
+        for file in files:
+            # Validate file extension
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext not in ['.pdf', '.docx', '.pptx', '.xlsx', '.xls', '.txt']:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type: {ext}. Supported: PDF, DOCX, PPTX, XLSX, TXT"
+                )
+            
+            # Save to temp file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+            content = await file.read()
+            temp_file.write(content)
+            temp_file.close()
+            temp_files.append(temp_file.name)
+        
+        # Ingest files
+        stats = ingest_files(temp_files)
+        
+        return {
+            "status": "success",
+            "message": f"Successfully ingested {stats['files_processed']} file(s)",
+            "stats": stats
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+    
+    finally:
+        # Clean up temp files
+        for temp_file in temp_files:
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
+
+
+# Chat endpoint
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    Ask a question and get an AI-generated answer based on ingested documents.
+    
+    The agent will:
+    1. Search for relevant documents
+    2. Use LLM to generate answer
+    3. Cite sources
+    """
+    if not request.question or len(request.question.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    
+    try:
+        # Get answer from agent
+        result = ask_question(
+            request.question,
+            verbose=False,
+            provider=request.provider
+        )
+        
+        return ChatResponse(
+            answer=result['output'],
+            sources=result['sources'],
+            context=result['context']
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate answer: {str(e)}")
+
+
+# Streaming chat endpoint
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Streaming version of the chat endpoint.
+
+    Returns Server-Sent Events (SSE) with:
+    - type: "thinking" - Agent is processing
+    - type: "sources" - Retrieved documents
+    - type: "answer" - The generated answer
+    - type: "done" - Stream complete
+    """
+    if not request.question or len(request.question.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    async def generate():
+        try:
+            # Step 1: Send thinking status
+            yield f"data: {json.dumps({'type': 'thinking', 'message': 'Searching documents...'})}\n\n"
+
+            # Import here to avoid circular imports
+            from backend.rag.search import search_documents
+
+            # Search for relevant documents
+            search_results = search_documents(request.question, n_results=5)
+
+            if not search_results:
+                yield f"data: {json.dumps({'type': 'answer', 'content': 'I could not find any relevant information in the documents.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            # Step 2: Send sources
+            sources = []
+            for result in search_results:
+                source = result['metadata'].get('source', 'unknown')
+                page = result['metadata'].get('page', '')
+                citation = f"{source}"
+                if page:
+                    citation += f" (Page {page})"
+                sources.append(citation)
+
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+
+            # Step 3: Generate answer
+            yield f"data: {json.dumps({'type': 'thinking', 'message': 'Generating answer...'})}\n\n"
+
+            result = ask_question(
+                request.question,
+                verbose=False,
+                provider=request.provider
+            )
+
+            # Step 4: Send answer
+            yield f"data: {json.dumps({'type': 'answer', 'content': result['output']})}\n\n"
+
+            # Step 5: Done
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+# Document statistics endpoint
+@app.get("/documents/stats")
+async def get_document_stats():
+    """
+    Get statistics about the indexed documents.
+
+    Returns:
+    - total_chunks: Number of document chunks in the database
+    - database_exists: Whether the database has been initialized
+    """
+    try:
+        if not os.path.exists(CHROMA_DB_DIR):
+            return {
+                "status": "success",
+                "total_chunks": 0,
+                "database_exists": False,
+                "message": "No documents have been ingested yet"
+            }
+
+        client = get_chroma_client()
+        collection = client.get_or_create_collection("rag_collection")
+        count = collection.count()
+
+        return {
+            "status": "success",
+            "total_chunks": count,
+            "database_exists": True,
+            "message": f"Database contains {count} document chunks"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+
+# Clear database endpoint
+@app.delete("/clear")
+async def clear_database():
+    """
+    Clear the vector database (for testing purposes).
+    WARNING: This will delete all ingested documents!
+    """
+    try:
+        import shutil
+
+        if os.path.exists(CHROMA_DB_DIR):
+            shutil.rmtree(CHROMA_DB_DIR)
+            return {
+                "status": "success",
+                "message": "Vector database cleared successfully"
+            }
+        else:
+            return {
+                "status": "success",
+                "message": "Database was already empty"
+            }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
+
+
+# Run with: uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
