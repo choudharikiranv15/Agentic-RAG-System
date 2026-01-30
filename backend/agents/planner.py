@@ -1,100 +1,192 @@
 """
 Planner Agent - The Brain of the Agentic RAG System
 
-This is the core agent that orchestrates the entire RAG workflow.
+Supports multiple LLM providers:
+1. Google Gemini 2.0 Flash (Primary)
+2. OpenRouter (Fallback - supports many models)
 
-Key Concept: The ReAct Pattern
--------------------------------
-ReAct = Reasoning + Acting
-
-The agent follows this loop:
-1. **Thought**: Think about what to do
-2. **Action**: Use a tool (e.g., search_documents)
-3. **Observation**: See the result
-4. **Repeat** until it has enough information
-5. **Final Answer**: Provide the answer to the user
-
-Example:
---------
-Question: "What is the submission deadline?"
-
-Thought: I need to search for deadline information
-Action: retrieve_tool
-Action Input: "submission deadline"
-Observation: [Found text mentioning "Submit via email..."]
-Thought: I now have the answer
-Final Answer: "You need to submit via email with GitHub URL, video link, and PDF."
-
-This is AGENTIC because the LLM decides the steps autonomously!
+Key Concept: RAG (Retrieval-Augmented Generation)
+--------------------------------------------------
+1. Search for relevant documents
+2. Pass them to the LLM as context
+3. LLM generates answer based on context
 """
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import AgentExecutor, initialize_agent, AgentType
-from backend.agents.retriever import retrieve_tool
+import google.generativeai as genai
+from backend.rag.search import search_documents
 import os
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
 
-def get_agent_executor():
-    """
-    Creates and returns the ReAct agent executor.
-    
-    Returns:
-        AgentExecutor: The configured agent ready to answer questions
-        
-    Raises:
-        ValueError: If GOOGLE_API_KEY is not set
-    """
-    # Get API key
+def get_gemini_response(prompt: str) -> str:
+    """Get response from Google Gemini"""
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError(
-            "GOOGLE_API_KEY not found in environment variables.\n"
-            "Please create a .env file with your API key.\n"
-            "Get one free at: https://makersuite.google.com/app/apikey"
-        )
+        raise ValueError("GOOGLE_API_KEY not found")
     
-    # Initialize LLM
-    # Using Gemini 1.5 Flash for speed and cost-effectiveness
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
-        google_api_key=api_key,
-        temperature=0,  # Deterministic responses
-        convert_system_message_to_human=True  # Gemini compatibility
-    )
-    
-    # Tools available to the agent
-    tools = [retrieve_tool]
-    
-    # Create the agent using initialize_agent (compatible with more LangChain versions)
-    agent_executor = initialize_agent(
-        tools=tools,
-        llm=llm,
-        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-        verbose=True,  # Print the thinking process
-        handle_parsing_errors=True,  # Gracefully handle errors
-        max_iterations=5,  # Prevent infinite loops
-        return_intermediate_steps=True  # Return the thought process
-    )
-    
-    return agent_executor
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-2.0-flash-001')
+    response = model.generate_content(prompt)
+    return response.text
 
 
-def ask_question(question: str) -> dict:
+def get_openrouter_response(prompt: str, model: str = "qwen/qwen-2.5-7b-instruct:free") -> str:
     """
-    Ask a question to the agent.
+    Get response from OpenRouter (fallback option)
+    
+    OpenRouter provides access to many free models:
+    - google/gemini-2.0-flash-exp:free
+    - meta-llama/llama-3.3-70b-instruct:free
+    - qwen/qwen-2.5-7b-instruct:free
+    
+    Get API key at: https://openrouter.ai/keys
+    """
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPENROUTER_API_KEY not found in .env file")
+    
+    try:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "HTTP-Referer": "http://localhost:3000",  # Optional but recommended
+                "X-Title": "Agentic RAG System",  # Optional but recommended
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            },
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            error_detail = response.json() if response.text else "No error details"
+            raise Exception(f"OpenRouter API error (status {response.status_code}): {error_detail}")
+        
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+        
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"OpenRouter request failed: {str(e)}")
+    except KeyError as e:
+        raise Exception(f"Unexpected OpenRouter response format: {str(e)}")
+
+
+
+def get_llm_response(prompt: str, provider: str = "auto") -> str:
+    """
+    Get LLM response with automatic fallback.
+    
+    Args:
+        prompt: The prompt to send
+        provider: "gemini", "openrouter", or "auto" (tries Gemini first, falls back to OpenRouter)
+    
+    Returns:
+        The LLM's response text
+    """
+    if provider == "gemini":
+        return get_gemini_response(prompt)
+    elif provider == "openrouter":
+        return get_openrouter_response(prompt)
+    else:  # auto
+        try:
+            print("   🌐 Using Google Gemini 2.0 Flash...")
+            return get_gemini_response(prompt)
+        except Exception as e:
+            print(f"   ⚠️  Gemini failed: {e}")
+            print("   🔄 Falling back to OpenRouter...")
+            return get_openrouter_response(prompt)
+
+
+def ask_question(question: str, verbose: bool = True, provider: str = "auto") -> dict:
+    """
+    Ask a question using the RAG system.
     
     Args:
         question: The user's question
+        verbose: Whether to print the thinking process
+        provider: "gemini", "openrouter", or "auto"
         
     Returns:
-        dict with 'output' (answer) and 'intermediate_steps' (thought process)
+        dict with 'output' (answer), 'context' (retrieved docs), and 'sources'
     """
-    agent = get_agent_executor()
-    result = agent.invoke({"input": question})
-    return result
+    
+    if verbose:
+        print("\n" + "="*60)
+        print("🔍 STEP 1: SEARCHING DOCUMENTS")
+        print("="*60)
+    
+    # Step 1: Retrieve relevant documents
+    search_results = search_documents(question, n_results=5)
+    
+    if not search_results:
+        return {
+            "output": "I couldn't find any relevant information in the documents.",
+            "context": "",
+            "sources": []
+        }
+    
+    # Format context for the LLM
+    context_parts = []
+    sources = []
+    
+    for i, result in enumerate(search_results, 1):
+        content = result['content']
+        source = result['metadata'].get('source', 'unknown')
+        page = result['metadata'].get('page', '')
+        
+        citation = f"[Source: {source}"
+        if page:
+            citation += f", Page {page}"
+        citation += "]"
+        
+        context_parts.append(f"Document {i}:\n{content}\n{citation}")
+        sources.append(citation)
+    
+    context = "\n\n---\n\n".join(context_parts)
+    
+    if verbose:
+        print(f"\n   ✅ Found {len(search_results)} relevant chunks")
+        print("\n" + "="*60)
+        print("🤖 STEP 2: GENERATING ANSWER")
+        print("="*60)
+    
+    # Step 2: Generate answer using LLM
+    prompt = f"""You are a helpful AI assistant that answers questions based on provided documents.
+
+Context from documents:
+
+{context}
+
+Question: {question}
+
+Instructions:
+- Answer based ONLY on the context above
+- If the context doesn't contain the answer, say "I don't have enough information to answer that"
+- Cite your sources (mention the document name)
+- Be concise but complete
+
+Answer:"""
+    
+    try:
+        answer = get_llm_response(prompt, provider=provider)
+    except Exception as e:
+        if verbose:
+            print(f"\n⚠️  Error generating answer: {e}")
+        answer = f"Error: Could not generate answer. {str(e)}"
+    
+    return {
+        "output": answer,
+        "context": context,
+        "sources": sources
+    }
 
 
 if __name__ == "__main__":
@@ -105,14 +197,21 @@ if __name__ == "__main__":
     
     test_question = "What is the objective of this assignment?"
     
-    print(f"\n❓ Question: {test_question}\n")
+    print(f"\n❓ Question: {test_question}")
     
     try:
-        result = ask_question(test_question)
+        result = ask_question(test_question, verbose=True, provider="auto")
+        
         print("\n" + "="*60)
         print("📝 FINAL ANSWER:")
         print("="*60)
         print(result['output'])
+        
+        print("\n" + "="*60)
+        print("📚 SOURCES:")
+        print("="*60)
+        for source in result['sources']:
+            print(f"  • {source}")
         
     except ValueError as e:
         print(f"\n❌ Error: {e}")
