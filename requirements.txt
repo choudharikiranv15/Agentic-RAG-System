@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+langchain
+langchain-community
+langchain-google-genai
+chromadb
+pypdf
+python-docx
+python-pptx
+pandas
+openpyxl
+python-dotenv
+requests
+mcp
+sentence-transformers

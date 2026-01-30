@@ -1,0 +1,34 @@
+
+# Python and Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.DS_Store
+
+# Data and Artifacts
+chroma_db/
+rag_collection/
+*.db
+*.sqlite
+
+# Frontend
+frontend/react-ui/node_modules/
+frontend/react-ui/dist/
+frontend/react-ui/.env.local
+frontend/react-ui/.env
+frontend/react-ui/npm-debug.log*
+frontend/react-ui/yarn-debug.log*
+frontend/react-ui/yarn-error.log*
+
+# IDEs
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+AI_Engineer_Assignment.pdf
+Agentic_RAG_System_Design.pdf
+PLAN.md
+TODO.md
