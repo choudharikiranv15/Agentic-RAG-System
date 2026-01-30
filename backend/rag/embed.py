@@ -47,7 +47,7 @@ def get_embeddings(use_local=True):
     
     # For initial testing, use local embeddings to avoid rate limits
     if use_local:
-        print("💻 Using local HuggingFace embeddings (all-MiniLM-L6-v2)")
+        print("[LOCAL] Using HuggingFace embeddings (all-MiniLM-L6-v2)")
         print("   First run will download the model (~80MB)")
         
         return HuggingFaceEmbeddings(

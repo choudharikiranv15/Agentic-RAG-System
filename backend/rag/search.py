@@ -40,7 +40,7 @@ def search_documents(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
             print(result['content'])
             print(result['metadata']['source'])
     """
-    print(f"🔍 Searching for: '{query}'")
+    print(f"[SEARCH] Searching for: '{query}'")
     
     try:
         client = get_chroma_client()
@@ -64,12 +64,12 @@ def search_documents(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
             for res in results
         ]
         
-        print(f"   ✅ Found {len(formatted_results)} relevant chunks")
+        print(f"   [OK] Found {len(formatted_results)} relevant chunks")
         
         return formatted_results
         
     except Exception as e:
-        print(f"   ❌ Error searching documents: {e}")
+        print(f"   [ERROR] Error searching documents: {e}")
         return []
 
 

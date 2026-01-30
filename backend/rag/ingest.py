@@ -81,11 +81,11 @@ def ingest_files(file_paths: List[str]) -> dict:
                             page_content=content,
                             metadata={"source": file_path}
                         )]
-                        print(f"📄 Loaded TXT: {file_path}")
+                        print(f"[LOADED] TXT: {file_path}")
                     else:
                         docs = []
             else:
-                print(f"⚠️  Skipping unsupported file type: {ext}")
+                print(f"[WARN] Skipping unsupported file type: {ext}")
                 continue
             
             documents.extend(docs)
@@ -93,11 +93,11 @@ def ingest_files(file_paths: List[str]) -> dict:
             stats["total_documents"] += len(docs)
             
         except Exception as e:
-            print(f"❌ Failed to load {file_path}: {e}")
+            print(f"[ERROR] Failed to load {file_path}: {e}")
             stats["files_failed"] += 1
-    
+
     if not documents:
-        print("\n⚠️  No documents to ingest!")
+        print("\n[WARN] No documents to ingest!")
         return stats
     
     # Step 2: Chunking
@@ -117,7 +117,7 @@ def ingest_files(file_paths: List[str]) -> dict:
     
     splits = text_splitter.split_documents(documents)
     stats["total_chunks"] = len(splits)
-    print(f"✅ Created {len(splits)} chunks")
+    print(f"[OK] Created {len(splits)} chunks")
     
     # Step 3: Embedding and Storage
     print("\n" + "="*60)
@@ -140,7 +140,7 @@ def ingest_files(file_paths: List[str]) -> dict:
     # Add documents
     vector_store.add_documents(documents=splits)
     
-    print(f"\n✅ INGESTION COMPLETE!")
+    print(f"\n[OK] INGESTION COMPLETE!")
     print(f"   Files processed: {stats['files_processed']}")
     print(f"   Files failed: {stats['files_failed']}")
     print(f"   Total chunks stored: {stats['total_chunks']}")

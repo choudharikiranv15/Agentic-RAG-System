@@ -28,20 +28,21 @@ def get_gemini_response(prompt: str) -> str:
         raise ValueError("GOOGLE_API_KEY not found")
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.0-flash-001')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     response = model.generate_content(prompt)
     return response.text
 
 
-def get_openrouter_response(prompt: str, model: str = "qwen/qwen-2.5-7b-instruct:free") -> str:
+def get_openrouter_response(prompt: str, model: str = "mistralai/mistral-nemo") -> str:
     """
     Get response from OpenRouter (fallback option)
-    
-    OpenRouter provides access to many free models:
-    - google/gemini-2.0-flash-exp:free
-    - meta-llama/llama-3.3-70b-instruct:free
-    - qwen/qwen-2.5-7b-instruct:free
-    
+
+    Working Mistral models on OpenRouter:
+    - mistralai/mistral-nemo (default)
+    - mistralai/mixtral-8x7b-instruct
+    - mistralai/mistral-7b-instruct-v0.1
+    - mistral/mistral-small-24b-instruct-2501
+
     Get API key at: https://openrouter.ai/keys
     """
     api_key = os.getenv("OPENROUTER_API_KEY")
@@ -97,11 +98,11 @@ def get_llm_response(prompt: str, provider: str = "auto") -> str:
         return get_openrouter_response(prompt)
     else:  # auto
         try:
-            print("   🌐 Using Google Gemini 2.0 Flash...")
+            print("   [LLM] Using Google Gemini 2.0 Flash...")
             return get_gemini_response(prompt)
         except Exception as e:
-            print(f"   ⚠️  Gemini failed: {e}")
-            print("   🔄 Falling back to OpenRouter...")
+            print(f"   [WARN] Gemini failed: {e}")
+            print("   [LLM] Falling back to OpenRouter...")
             return get_openrouter_response(prompt)
 
 
@@ -120,7 +121,7 @@ def ask_question(question: str, verbose: bool = True, provider: str = "auto") ->
     
     if verbose:
         print("\n" + "="*60)
-        print("🔍 STEP 1: SEARCHING DOCUMENTS")
+        print("[STEP 1] SEARCHING DOCUMENTS")
         print("="*60)
     
     # Step 1: Retrieve relevant documents
@@ -136,50 +137,66 @@ def ask_question(question: str, verbose: bool = True, provider: str = "auto") ->
     # Format context for the LLM
     context_parts = []
     sources = []
-    
+    seen_sources = set()
+
     for i, result in enumerate(search_results, 1):
         content = result['content']
         source = result['metadata'].get('source', 'unknown')
         page = result['metadata'].get('page', '')
-        
+
+        # Clean up source path - extract just filename
+        import os
+        if os.sep in source or '/' in source:
+            source = os.path.basename(source)
+        # Remove temp file prefixes like 'tmp_3bdghhx'
+        if source.startswith('tmp') and '_' in source:
+            source = "Uploaded Document"
+
         citation = f"[Source: {source}"
         if page:
             citation += f", Page {page}"
         citation += "]"
-        
+
         context_parts.append(f"Document {i}:\n{content}\n{citation}")
-        sources.append(citation)
+
+        # Avoid duplicate sources in the list
+        source_key = f"{source}:{page}"
+        if source_key not in seen_sources:
+            sources.append(citation)
+            seen_sources.add(source_key)
     
     context = "\n\n---\n\n".join(context_parts)
     
     if verbose:
-        print(f"\n   ✅ Found {len(search_results)} relevant chunks")
+        print(f"\n   [OK] Found {len(search_results)} relevant chunks")
         print("\n" + "="*60)
-        print("🤖 STEP 2: GENERATING ANSWER")
+        print("[STEP 2] GENERATING ANSWER")
         print("="*60)
     
     # Step 2: Generate answer using LLM
-    prompt = f"""You are a helpful AI assistant that answers questions based on provided documents.
+    prompt = f"""You are an expert AI assistant helping users understand documents.
+Provide clear, well-structured answers based on the provided context.
 
-Context from documents:
-
+CONTEXT FROM DOCUMENTS:
 {context}
 
-Question: {question}
+USER QUESTION: {question}
 
-Instructions:
-- Answer based ONLY on the context above
-- If the context doesn't contain the answer, say "I don't have enough information to answer that"
-- Cite your sources (mention the document name)
-- Be concise but complete
+INSTRUCTIONS:
+1. Answer based ONLY on the context provided above
+2. Structure your response clearly with bullet points or numbered lists when appropriate
+3. If explaining a process or requirements, break it down into clear steps
+4. Be comprehensive but avoid unnecessary repetition
+5. If the context doesn't contain enough information, clearly state what's missing
+6. Do NOT mention temporary file paths - just say "the documents" or use the original filename if visible
 
-Answer:"""
+RESPONSE:"""
     
     try:
         answer = get_llm_response(prompt, provider=provider)
     except Exception as e:
         if verbose:
-            print(f"\n⚠️  Error generating answer: {e}")
+            print(f"\n[ERROR] Error generating answer: {e}")
         answer = f"Error: Could not generate answer. {str(e)}"
     
     return {
@@ -192,30 +209,30 @@ Answer:"""
 if __name__ == "__main__":
     # Test the agent
     print("\n" + "="*60)
-    print("🤖 TESTING AGENTIC RAG SYSTEM")
+    print("[TEST] TESTING AGENTIC RAG SYSTEM")
     print("="*60)
-    
+
     test_question = "What is the objective of this assignment?"
-    
-    print(f"\n❓ Question: {test_question}")
-    
+
+    print(f"\n[QUESTION] {test_question}")
+
     try:
         result = ask_question(test_question, verbose=True, provider="auto")
-        
+
         print("\n" + "="*60)
-        print("📝 FINAL ANSWER:")
+        print("[ANSWER]")
         print("="*60)
         print(result['output'])
-        
+
         print("\n" + "="*60)
-        print("📚 SOURCES:")
+        print("[SOURCES]")
         print("="*60)
         for source in result['sources']:
-            print(f"  • {source}")
-        
+            print(f"  - {source}")
+
     except ValueError as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n[ERROR] {e}")
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\n[ERROR] Unexpected: {e}")
         import traceback
         traceback.print_exc()
