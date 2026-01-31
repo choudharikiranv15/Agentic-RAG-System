@@ -12,7 +12,11 @@ import {
   Trash2,
   Sparkles,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Brain,
+  Database,
+  Copy,
+  Check
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -183,7 +187,8 @@ export default function App() {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.data.answer,
-        sources: response.data.sources
+        sources: response.data.sources,
+        context: response.data.context
       }]);
     } catch (error) {
       console.error(error);
@@ -388,24 +393,69 @@ export default function App() {
                       {msg.role === 'assistant' ? 'AI Agent' : 'You'}
                     </div>
 
-                    <div className="prose prose-invert prose-p:leading-relaxed prose-pre:p-0 max-w-none text-[#ECECEC]">
+                    {/* 1. Reasoning/Context Accordion */}
+                    {msg.context && (
+                      <details className="mb-4 group bg-blue-500/5 border border-blue-500/10 rounded-lg open:bg-blue-500/10 transition-all">
+                        <summary className="cursor-pointer p-2.5 text-xs font-semibold text-blue-400 flex items-center gap-2 select-none hover:text-blue-300">
+                          <Brain size={14} className="shrink-0" />
+                          <span>Analyzed Context & Reasoning</span>
+                          <ChevronRight size={12} className="ml-auto group-open:rotate-90 transition-transform opacity-50" />
+                        </summary>
+                        <div className="p-3 pt-0 text-xs text-blue-200/70 font-mono leading-relaxed max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500/20 whitespace-pre-wrap">
+                          {msg.context.length > 500 ? msg.context.substring(0, 500) + "..." : msg.context}
+                        </div>
+                      </details>
+                    )}
+
+                    <div className="prose prose-invert prose-p:leading-relaxed prose-pre:p-0 max-w-none text-[#ECECEC] prose-headings:font-semibold prose-a:text-blue-400 hover:prose-a:text-blue-300">
                       <ReactMarkdown
                         components={{
                           code({ node, inline, className, children, ...props }) {
                             const match = /language-(\w+)/.exec(className || '')
-                            return !inline && match ? (
-                              <div className="rounded-md overflow-hidden my-4 border border-[#444] bg-[#1e1e1e]">
-                                <div className="bg-[#2d2d2d] px-4 py-1.5 text-xs text-[#aaa] font-mono border-b border-[#444] flex justify-between items-center">
-                                  <span className="uppercase">{match[1]}</span>
+                            const codeContent = String(children).replace(/\n$/, '');
+
+                            // Custom Code Block Component
+                            if (!inline && match) {
+                              const [copied, setCopied] = useState(false);
+                              const handleCopy = () => {
+                                navigator.clipboard.writeText(codeContent);
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                              };
+
+                              return (
+                                <div className="rounded-lg overflow-hidden my-4 border border-[#444] bg-[#1e1e1e] group/code shadow-lg">
+                                  <div className="bg-[#2a2a2a] px-4 py-2 text-xs text-[#aaa] font-mono border-b border-[#444] flex justify-between items-center select-none">
+                                    <span className="uppercase font-semibold text-[#888]">{match[1]}</span>
+                                    <button
+                                      onClick={handleCopy}
+                                      className="flex items-center gap-1.5 hover:text-white transition-colors p-1 rounded hover:bg-[#333]"
+                                    >
+                                      {copied ? (
+                                        <>
+                                          <Check size={12} className="text-green-400" />
+                                          <span className="text-green-400">Copied</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy size={12} />
+                                          <span>Copy</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                  <div className="p-4 overflow-x-auto custom-scrollbar">
+                                    <code {...props} className="font-mono text-sm text-[#e0e0e0] block leading-relaxed">
+                                      {children}
+                                    </code>
+                                  </div>
                                 </div>
-                                <div className="p-4 overflow-x-auto">
-                                  <code {...props} className="font-mono text-sm text-[#e0e0e0] block">
-                                    {children}
-                                  </code>
-                                </div>
-                              </div>
-                            ) : (
-                              <code {...props} className={`${className} bg-[#2F2F2F] text-[#E0E0E0] px-1.5 py-0.5 rounded text-sm font-mono`}>
+                              );
+                            }
+
+                            // Inline Code
+                            return (
+                              <code {...props} className={`${className} bg-[#2F2F2F] text-[#E0E0E0] px-1.5 py-0.5 rounded text-sm font-mono border border-[#333]`}>
                                 {children}
                               </code>
                             )
@@ -415,25 +465,74 @@ export default function App() {
                         {msg.content}
                       </ReactMarkdown>
 
-                      {/* Citations Block */}
+                      {/* 3. Enhanced Sources Grid (Collapsible) */}
                       {msg.sources && msg.sources.length > 0 && (
-                        <div className="mt-4">
-                          <details className="group">
-                            <summary className="list-none cursor-pointer inline-flex items-center gap-2 text-xs font-medium text-[#888] hover:text-[#CCC] transition-colors select-none">
-                              <div className="flex items-center gap-2 bg-[#1e1e1e] border border-[#333] px-3 py-1.5 rounded-lg hover:bg-[#2a2a2a] hover:border-[#444] transition-all">
-                                <Sparkles size={12} className="text-blue-400" />
-                                <span>{msg.sources.length} Sources Verified</span>
-                                <ChevronRight size={12} className="group-open:rotate-90 transition-transform text-[#666]" />
+                        <div className="mt-4 pt-2 border-t border-[#333]">
+                          <details className="group/sources">
+                            <summary className="flex items-center gap-2 cursor-pointer py-2 select-none text-[#888] hover:text-[#CCC] transition-colors">
+                              <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider">
+                                <Database size={12} className="text-blue-500" />
+                                <span>Verified References ({msg.sources.length})</span>
                               </div>
+                              <ChevronRight size={12} className="ml-auto group-open/sources:rotate-90 transition-transform opacity-50" />
                             </summary>
 
-                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 pl-1 animate-in slide-in-from-top-2 duration-200">
-                              {msg.sources.map((s, i) => (
-                                <div key={i} className="flex items-start gap-2 bg-[#252525] border border-[#333] p-2 rounded text-xs text-[#CCC]">
-                                  <FileText size={14} className="shrink-0 text-[#666] mt-0.5" />
-                                  <span className="truncate leading-relaxed">{s.replace('[Source: ', '').replace(']', '')}</span>
-                                </div>
-                              ))}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 animate-in slide-in-from-top-2 duration-300 pb-2">
+                              {(() => {
+                                // Group sources by filename
+                                const groupedSources = {};
+                                msg.sources.forEach(sourceString => {
+                                  // Clean the source string: remove "[Source: " and "]" and surrounding whitespace
+                                  let cleanSource = sourceString.replace(/^\[Source:\s*/, '').replace(/\]$/, '').trim();
+
+                                  let filename = cleanSource;
+                                  let page = null;
+
+                                  // Check for Page number pattern: "Filename (Page X)"
+                                  const pageMatch = filename.match(/(.*?) \(Page (\d+)\)$/);
+                                  if (pageMatch) {
+                                    filename = pageMatch[1];
+                                    page = pageMatch[2];
+                                  } else {
+                                    // If no page match, just ensure we just get the filename from path if present
+                                    if (filename.includes('/') || filename.includes('\\')) {
+                                      filename = filename.split(/[/\\]/).pop();
+                                    }
+                                  }
+
+                                  if (!groupedSources[filename]) {
+                                    groupedSources[filename] = { pages: new Set(), original: sourceString };
+                                  }
+                                  if (page) {
+                                    groupedSources[filename].pages.add(page);
+                                  }
+                                });
+
+                                return Object.keys(groupedSources).map((filename, i) => {
+                                  const source = groupedSources[filename];
+                                  const pages = Array.from(source.pages).sort((a, b) => Number(a) - Number(b));
+                                  const label = pages.length > 0
+                                    ? `Page ${pages.join(', ')}`
+                                    : 'Source Document';
+
+                                  return (
+                                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#252525] border border-[#333] hover:border-[#555] hover:bg-[#2a2a2a] transition-all group/card cursor-default">
+                                      <div className="w-8 h-8 rounded bg-[#333] border border-[#444] flex items-center justify-center text-[#888] group-hover/card:text-blue-400 group-hover/card:border-blue-500/30 transition-colors shrink-0">
+                                        <FileText size={16} />
+                                      </div>
+                                      <div className="flex-1 min-w-0 flex flex-col justify-center min-h-8">
+                                        <div className="text-xs text-[#ECECEC] font-medium truncate" title={filename}>
+                                          {filename}
+                                        </div>
+                                        <div className="text-[10px] text-[#777] font-mono mt-0.5 flex items-center gap-1 truncate">
+                                          <span className="w-1 h-1 rounded-full bg-blue-500 shrink-0"></span>
+                                          <span className="truncate">{label}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                });
+                              })()}
                             </div>
                           </details>
                         </div>
