@@ -11,7 +11,7 @@ Endpoints:
 - DELETE /clear: Clear the vector database
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -20,10 +20,16 @@ import os
 import tempfile
 import asyncio
 import json
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from backend.rag.ingest import ingest_files
 from backend.agents.planner import ask_question
 from backend.db.chroma import get_chroma_client, CHROMA_DB_DIR
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -31,6 +37,10 @@ app = FastAPI(
     description="AI-powered document Q&A system with agentic reasoning",
     version="1.0.0"
 )
+
+# Add rate limiter to app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configure CORS for frontend
 app.add_middleware(
@@ -90,7 +100,8 @@ async def status():
 
 # Upload endpoint
 @app.post("/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
+@limiter.limit("5/minute")  # Max 5 uploads per minute
+async def upload_files(request: Request, files: List[UploadFile] = File(...)):
     """
     Upload and ingest documents into the vector database.
     
@@ -99,11 +110,31 @@ async def upload_files(files: List[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
+    # File size limit: 10MB per file
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
+    
     temp_files = []
     
     try:
         # Save uploaded files temporarily
         for file in files:
+            # Check file size
+            file.file.seek(0, 2)  # Seek to end
+            file_size = file.file.tell()
+            file.file.seek(0)  # Reset to beginning
+            
+            if file_size > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File '{file.filename}' is too large ({file_size / 1024 / 1024:.1f}MB). Maximum size is 10MB."
+                )
+            
+            if file_size == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File '{file.filename}' is empty."
+                )
+            
             # Validate file extension
             ext = os.path.splitext(file.filename)[1].lower()
             if ext not in ['.pdf', '.docx', '.pptx', '.xlsx', '.xls', '.txt']:
@@ -157,7 +188,8 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
 # Chat endpoint
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@limiter.limit("20/minute")  # Max 20 chat requests per minute
+async def chat(http_request: Request, request: ChatRequest):
     """
     Ask a question and get an AI-generated answer based on ingested documents.
     
@@ -168,6 +200,14 @@ async def chat(request: ChatRequest):
     """
     if not request.question or len(request.question.strip()) == 0:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
+    
+    # Validate question length (max 500 characters)
+    MAX_QUESTION_LENGTH = 500
+    if len(request.question) > MAX_QUESTION_LENGTH:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Question too long ({len(request.question)} chars). Maximum is {MAX_QUESTION_LENGTH} characters."
+        )
     
     try:
         # Get answer from agent
@@ -189,7 +229,8 @@ async def chat(request: ChatRequest):
 
 # Streaming chat endpoint
 @app.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+@limiter.limit("20/minute")  # Max 20 streaming requests per minute
+async def chat_stream(http_request: Request, request: ChatRequest):
     """
     Streaming version of the chat endpoint.
 
@@ -201,6 +242,14 @@ async def chat_stream(request: ChatRequest):
     """
     if not request.question or len(request.question.strip()) == 0:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
+    
+    # Validate question length
+    MAX_QUESTION_LENGTH = 500
+    if len(request.question) > MAX_QUESTION_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Question too long ({len(request.question)} chars). Maximum is {MAX_QUESTION_LENGTH} characters."
+        )
 
     async def generate():
         try:
