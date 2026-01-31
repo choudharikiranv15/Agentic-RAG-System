@@ -296,7 +296,7 @@ async def get_document_stats():
 @app.get("/documents")
 async def list_documents():
     """
-    List all ingested documents.
+    List all ingested documents (only shows clean filenames, not temp paths).
     """
     try:
         if not os.path.exists(CHROMA_DB_DIR):
@@ -304,21 +304,30 @@ async def list_documents():
 
         client = get_chroma_client()
         collection = client.get_or_create_collection("rag_collection")
-        
+
         # Get all metadata
         result = collection.get(include=['metadatas'])
         metadatas = result['metadatas']
-        
-        # Extract unique filenames
+
+        # Extract unique filenames - filter out temp file patterns
         unique_files = set()
         for meta in metadatas:
-            if meta and 'filename' in meta:
-                unique_files.add(meta['filename'])
-            elif meta and 'source' in meta:
-                 # Fallback for old data
-                 unique_files.add(os.path.basename(meta['source']))
-        
-        return {"documents": list(unique_files)}
+            if not meta:
+                continue
+
+            filename = None
+            if 'filename' in meta:
+                filename = meta['filename']
+            elif 'source' in meta:
+                filename = os.path.basename(meta['source'])
+
+            if filename:
+                # Skip temp file patterns (e.g., tmp_xyz123.pdf, tmpabcdef.pdf)
+                if filename.startswith('tmp') and ('_' in filename or len(filename) > 20):
+                    continue
+                unique_files.add(filename)
+
+        return {"documents": sorted(list(unique_files))}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
@@ -329,21 +338,89 @@ async def list_documents():
 async def delete_document(filename: str):
     """
     Delete a specific document by filename.
+    Removes all chunks associated with the document from the vector database.
     """
     try:
         client = get_chroma_client()
         collection = client.get_or_create_collection("rag_collection")
-        
-        # Delete by metadata filename
-        # Note: We try both 'filename' field and 'source' field for backward compatibility
-        collection.delete(where={"filename": filename})
-        collection.delete(where={"source": filename})
-        
-        return {"status": "success", "message": f"Deleted {filename}"}
+
+        # Get all documents with their IDs and metadata
+        result = collection.get(include=['metadatas'])
+        ids = result['ids']
+        metadatas = result['metadatas']
+
+        # Find IDs that match the filename
+        ids_to_delete = []
+        for doc_id, meta in zip(ids, metadatas):
+            if not meta:
+                continue
+
+            # Check both 'filename' and 'source' fields
+            doc_filename = meta.get('filename', '')
+            doc_source = os.path.basename(meta.get('source', ''))
+
+            if filename == doc_filename or filename == doc_source:
+                ids_to_delete.append(doc_id)
+
+        if ids_to_delete:
+            collection.delete(ids=ids_to_delete)
+            return {
+                "status": "success",
+                "message": f"Deleted {filename} ({len(ids_to_delete)} chunks removed)"
+            }
+        else:
+            return {
+                "status": "warning",
+                "message": f"No chunks found for {filename}"
+            }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
 
+
+
+# Cleanup temp files from database
+@app.post("/documents/cleanup")
+async def cleanup_temp_documents():
+    """
+    Remove old temporary file entries from the database.
+    This cleans up entries with temp file patterns like tmp_xyz.pdf
+    """
+    try:
+        client = get_chroma_client()
+        collection = client.get_or_create_collection("rag_collection")
+
+        # Get all documents
+        result = collection.get(include=['metadatas'])
+        ids = result['ids']
+        metadatas = result['metadatas']
+
+        # Find IDs with temp file patterns
+        ids_to_delete = []
+        for doc_id, meta in zip(ids, metadatas):
+            if not meta:
+                continue
+
+            filename = meta.get('filename', '') or os.path.basename(meta.get('source', ''))
+
+            # Match temp file patterns
+            if filename.startswith('tmp') and ('_' in filename or len(filename) > 20):
+                ids_to_delete.append(doc_id)
+
+        if ids_to_delete:
+            collection.delete(ids=ids_to_delete)
+            return {
+                "status": "success",
+                "message": f"Cleaned up {len(ids_to_delete)} temporary file entries"
+            }
+        else:
+            return {
+                "status": "success",
+                "message": "No temporary files to clean up"
+            }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup: {str(e)}")
 
 
 # Clear database endpoint
