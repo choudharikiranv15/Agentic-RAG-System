@@ -1,246 +1,158 @@
 # 🤖 Agentic RAG System
 
-An intelligent document question-answering system powered by AI agents, vector databases, and Large Language Models.
+An intelligent, secure, and production-ready document question-answering system powered by AI agents, vector databases, and modern web technologies.
 
-## 🎯 What is This?
+![App Screenshot](https://via.placeholder.com/800x400?text=Agentic+RAG+System+UI)
 
-This system allows you to:
-1. **Upload documents** (PDF, DOCX, PPT, Excel, TXT)
-2. **Ask questions** in natural language
-3. **Get accurate answers** based on your documents (not made up!)
+## 🎯 Features
 
-The system uses **agentic AI** - meaning the AI autonomously decides how to find and synthesize information.
+### **Core Capabilities**
+- **Multi-Format Ingestion:** Support for PDF, DOCX, PPTX, XLSX, and TXT files.
+- **Agentic Reasoning:** Uses ReAct pattern to autonomously plan, search, and answer questions.
+- **Semantic Search:** Powered by ChromaDB and high-quality embeddings.
+- **Source Citations:** Every answer cites specific documents and filenames.
+
+### **Advanced Features**
+- **Streaming Responses:** Real-time token streaming for a chat-like experience.
+- **Relevance Filtering:** Intelligently filters out irrelevant search results (threshold: 0.3).
+- **Persistent History:** Conversations survive page refreshes via local storage.
+- **Reference Management:** View underlying source chunks for every answer.
+
+### **Production-Ready Security**
+- **Rate Limiting:** Protects against API abuse (5 uploads/min, 20 chats/min).
+- **Validation:** Strict file size checks (10MB limit) and input sanitization.
+- **Duplicate Prevention:** Automatically detects and blocks duplicate file uploads.
 
 ---
 
 ## 🏗️ Architecture
 
+```mermaid
+graph TD
+    User[User] -->|Uploads File| API[FastAPI Backend]
+    User -->|Asks Question| API
+    
+    subgraph "Backend System"
+        API -->|1. Validate & Rate Limit| Val[Validator]
+        Val -->|2. Process File| Loader[Document Loaders]
+        Loader -->|3. Chunk & Embed| Embed[Embedding Model]
+        Embed -->|4. Store| DB[(ChromaDB)]
+        
+        API -->|5. Query| Agent[ReAct Agent]
+        Agent -->|6. Plan & Search| DB
+        Agent -->|7. Synthesize| LLM[Gemini 1.5 Flash]
+        LLM -->|8. Stream Answer| API
+    end
+    
+    subgraph "Frontend"
+        React[React + Vite]
+        Tailwind[Tailwind CSS]
+        State[Local Storage]
+    end
 ```
-User Question → ReAct Agent → Retrieval Tool → ChromaDB (Vector DB)
-                    ↓
-              Gemini LLM → Synthesized Answer with Citations
-```
-
-**Key Components:**
-- **ChromaDB**: Stores document embeddings for semantic search
-- **LangChain**: Orchestrates the agentic workflow
-- **Gemini 1.5 Flash**: Powers the AI reasoning
-- **ReAct Pattern**: Enables autonomous tool use
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-- Python 3.11+
-- Google Gemini API Key (free at [makersuite.google.com](https://makersuite.google.com/app/apikey))
+- **Python 3.11+**
+- **Node.js 18+**
+- **Google Gemini API Key** (Get it [here](https://makersuite.google.com/app/apikey))
 
-### 2. Installation
-
+### 2. Backend Setup
 ```bash
-# Activate virtual environment
-.\venv\Scripts\Activate.ps1  # Windows
+# Clone repository
+git clone <repo-url>
+cd Agentic-RAG-System
+
+# Create virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1   # Windows
 # source venv/bin/activate    # Linux/Mac
 
-# Dependencies are already installed!
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure Environment
+# Create .env file with:
+# GOOGLE_API_KEY=your_key_here
 ```
 
-### 3. Configuration
-
-1. Open `.env` file
-2. Add your Google API key:
-   ```
-   GOOGLE_API_KEY=your_actual_key_here
-   ```
-
-### 4. Test the System
-
-#### Step 1: Ingest Documents
+### 3. Frontend Setup
 ```bash
-# Ingest the assignment PDF
-python -m backend.rag.ingest AI_Engineer_Assignment.pdf
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
 ```
 
-#### Step 2: Test Search
-```bash
-# Test similarity search
-python -m backend.rag.search
-```
-
-#### Step 3: Test the Agent
-```bash
-# Test the full agentic system
-python -m backend.agents.planner
-```
-
----
-
-## 📖 How It Works
-
-### 1. **Document Ingestion**
-```python
-# backend/rag/ingest.py
-File → Load → Chunk (1000 chars) → Embed → Store in ChromaDB
-```
-
-**Why chunking?**
-- Documents can be huge (100+ pages)
-- LLMs have context limits (~8K tokens)
-- Smaller chunks = more precise retrieval
-
-### 2. **Semantic Search**
-```python
-# backend/rag/search.py
-Query → Embedding → Similarity Search → Top K chunks
-```
-
-**How it works:**
-- Converts your question to a vector
-- Finds documents with similar vectors
-- Returns most relevant chunks
-
-### 3. **Agentic Reasoning (ReAct)**
-```python
-# backend/agents/planner.py
-Question → Thought → Action (search) → Observation → Answer
-```
-
-**Example:**
-```
-Q: "What is the submission deadline?"
-
-Thought: I need to search for deadline info
-Action: retrieve_tool("submission deadline")
-Observation: [Found: "Submit via email..."]
-Thought: I have the answer
-Final Answer: "Submit via email with GitHub URL, video, and PDF"
-```
+### 4. Running the System
+1. **Start Backend:** `python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000`
+2. **Start Frontend:** `npm run dev` (in separate terminal)
+3. **Open Browser:** Go to `http://localhost:5173`
 
 ---
 
 ## 🧪 Testing Guide
 
-### Test 1: ChromaDB Connection
-```bash
-python -m backend.db.chroma
-```
-Expected: ✅ ChromaDB initialized
+We have implemented a comprehensive test suite covering all critical features.
 
-### Test 2: Embeddings
-```bash
-python -m backend.rag.embed
-```
-Expected: ✅ Embedding generated (384 or 768 dimensions)
+### **Manual Test Checklist**
+1. **Initial State:** Verify chat is disabled with yellow warning until files are uploaded.
+2. **Upload:** Upload a PDF (< 10MB). Verify progress bar appears.
+3. **Chat:** Ask "What is this document about?". Verify streaming response and sources.
+4. **Validation:** Try uploading a file > 10MB. Verify error alert.
+5. **Persistence:** Refresh page. Verify chat history remains.
 
-### Test 3: PDF Loading
-```bash
-python -m backend.loaders.pdf
-```
-Expected: ✅ Extracted N pages
-
-### Test 4: Full Ingestion
-```bash
-python -m backend.rag.ingest AI_Engineer_Assignment.pdf
-```
-Expected: 
-- ✅ Loaded PDF
-- ✅ Created chunks
-- ✅ Stored in ChromaDB
-
-### Test 5: Search
-```bash
-python -m backend.rag.search
-```
-Expected: ✅ Found relevant chunks
-
-### Test 6: Agent (Requires API Key!)
-```bash
-python -m backend.agents.planner
-```
-Expected: 
-- Agent thinks step-by-step
-- Uses retrieve_tool
-- Provides answer with citations
+See `TESTING_CHECKLIST.md` for the full 40-point inspection plan.
 
 ---
 
-## 📁 Project Structure
+## 📂 Project Structure
 
 ```
-backend/
-├── agents/
-│   ├── planner.py      # Main ReAct agent
-│   ├── retriever.py    # Search tool wrapper
-│   └── validator.py    # Hallucination checker
-├── rag/
-│   ├── ingest.py       # Document ingestion pipeline
-│   ├── embed.py        # Embedding generation
-│   └── search.py       # Similarity search
-├── loaders/
-│   ├── pdf.py          # PDF loader
-│   ├── docx.py         # Word loader
-│   ├── ppt.py          # PowerPoint loader
-│   └── excel.py        # Excel loader
-├── db/
-│   └── chroma.py       # ChromaDB client
-└── main.py             # FastAPI server (coming next!)
+├── backend/
+│   ├── agents/          # AI Agent Logic (Planner, Retriever)
+│   ├── rag/             # RAG Pipeline (Ingest, Search, Embed)
+│   ├── loaders/         # Document parsers (PDF, DOCX, etc.)
+│   ├── db/              # Database connections
+│   └── main.py          # FastAPI Application
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx      # Main React Component
+│   │   └── index.css    # Tailwind Styles
+│   └── package.json
+├── chroma_db/           # Persistent Vector Store
+└── requirements.txt     # Python Dependencies
 ```
-
----
-
-## 🎓 Key Concepts
-
-### What is RAG?
-**R**etrieval-**A**ugmented **G**eneration
-- Retrieves relevant info from YOUR documents
-- Augments the LLM's context with that info
-- Generates answers based on retrieved context
-
-### What makes it "Agentic"?
-- Traditional: You write if/else logic
-- Agentic: LLM decides what to do autonomously
-- Uses "tools" (functions) to interact with data
-
-### Why Vector Databases?
-- Traditional search: Keyword matching ("car" ≠ "automobile")
-- Vector search: Semantic matching ("car" ≈ "automobile")
-- Embeddings capture meaning, not just words
 
 ---
 
 ## 🔧 Troubleshooting
 
-### "GOOGLE_API_KEY not found"
-- Create `.env` file
-- Add: `GOOGLE_API_KEY=your_key_here`
-- Get key at: https://makersuite.google.com/app/apikey
+**"Rate limit exceeded"**
+- Wait 1 minute. The system limits requests to prevent abuse.
 
-### "No module named 'backend'"
-- Make sure you're in the project root
-- Run: `python -m backend.rag.ingest` (not `python backend/rag/ingest.py`)
+**"File too large"**
+- Ensure your document is under 10MB.
 
-### "Collection is empty"
-- You need to ingest documents first
-- Run: `python -m backend.rag.ingest <your_file.pdf>`
+**"Connection Error"**
+- Ensure backend is running on port 8000.
+- Check terminal for Python errors.
 
 ---
 
-## 📝 Next Steps
-
-- [ ] Build FastAPI backend (Phase 3)
-- [ ] Create React frontend (Phase 3)
-- [ ] Add MCP server (Bonus)
-- [ ] Deploy and create demo video (Phase 4)
-
----
-
-## 📚 Learn More
-
-- [LangChain Docs](https://python.langchain.com/docs/get_started/introduction)
-- [ChromaDB Docs](https://docs.trychroma.com/)
-- [Gemini API](https://ai.google.dev/docs)
-- [ReAct Paper](https://arxiv.org/abs/2210.03629)
+## 📚 Tech Stack
+- **AI/LLM:** Google Gemini 1.5 Flash, LangChain
+- **Vector DB:** ChromaDB
+- **Backend:** FastAPI, Uvicorn, SlowAPI (Rate Limiting)
+- **Frontend:** React, Vite, Tailwind CSS, Lucide Icons
+- **Deployment:** Ready for Docker/Cloud deployment
 
 ---
 
-Built with ❤️ for AI Engineer Assignment
+*Built with ❤️ for the AI Engineer Assignment*

@@ -161,6 +161,31 @@ async def upload_files(request: Request, files: List[UploadFile] = File(...)):
         files_to_ingest = [f for f in temp_files if os.path.isfile(f)]
         directories_to_clean = [f for f in temp_files if os.path.isdir(f)]
 
+        # Check for duplicate files
+        try:
+            client = get_chroma_client()
+            collection = client.get_or_create_collection("rag_collection")
+            result = collection.get(include=['metadatas'])
+            existing_files = set()
+            for meta in result['metadatas']:
+                if meta and 'filename' in meta:
+                    existing_files.add(meta['filename'])
+            
+            # Filter out duplicates
+            new_filenames = [os.path.basename(f) for f in files_to_ingest]
+            duplicates = [fn for fn in new_filenames if fn in existing_files]
+            
+            if duplicates:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"File(s) already uploaded: {', '.join(duplicates)}. Please delete them first if you want to re-upload."
+                )
+        except HTTPException:
+            raise  # Re-raise HTTP exceptions
+        except Exception as e:
+            # If check fails, continue anyway (better than blocking upload)
+            print(f"[WARN] Could not check for duplicates: {e}")
+
         # Ingest files
         stats = ingest_files(files_to_ingest)
         

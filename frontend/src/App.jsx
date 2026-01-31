@@ -23,15 +23,26 @@ export default function App() {
   // State
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [files, setFiles] = useState([]);
-  const [messages, setMessages] = useState([
-    {
+  // Load messages from localStorage or use default
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('chatHistory');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (err) {
+      console.error('Failed to load chat history:', err);
+    }
+    return [{
       role: 'assistant',
       content: "# Welcome to Agentic RAG\n\nI'm ready to help! Upload your PDF/DOCX files on the left, and I'll answer questions based **strictly** on their content.\n\nType a question below to get started."
-    }
-  ]);
+    }];
+  });
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('idle');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [filesLoading, setFilesLoading] = useState(true);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -44,16 +55,28 @@ export default function App() {
     scrollToBottom();
   }, [messages, isThinking]);
 
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('chatHistory', JSON.stringify(messages));
+    } catch (err) {
+      console.error('Failed to save chat history:', err);
+    }
+  }, [messages]);
+
   useEffect(() => {
     fetchDocuments();
   }, []);
 
   const fetchDocuments = async () => {
+    setFilesLoading(true);
     try {
       const res = await axios.get(`${API_URL}/documents`);
       setFiles(res.data.documents || []);
     } catch (err) {
       console.error("Failed to fetch documents", err);
+    } finally {
+      setFilesLoading(false);
     }
   };
 
@@ -70,25 +93,58 @@ export default function App() {
     }
   };
 
-  // File Upload
   const handleFileUpload = async (e) => {
     const selectedFiles = Array.from(e.target.files);
     if (!selectedFiles.length) return;
 
     setUploadStatus('uploading');
+    setUploadProgress(0);
     const formData = new FormData();
     selectedFiles.forEach(file => {
       formData.append('files', file);
     });
 
     try {
-      await axios.post(`${API_URL}/upload`, formData);
+      await axios.post(`${API_URL}/upload`, formData, {
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(percentCompleted);
+        }
+      });
       await fetchDocuments(); // Refresh list from server
       setUploadStatus('success');
-      setTimeout(() => setUploadStatus('idle'), 2000);
+      setUploadProgress(100);
+      setTimeout(() => {
+        setUploadStatus('idle');
+        setUploadProgress(0);
+      }, 2000);
     } catch (error) {
       console.error(error);
       setUploadStatus('error');
+
+      // User-friendly error messages
+      let errorMsg = 'Failed to upload files. ';
+      if (error.response) {
+        const status = error.response.status;
+        const detail = error.response.data?.detail || '';
+
+        if (status === 413) {
+          errorMsg = '❌ File too large! Maximum size is 10MB per file.';
+        } else if (status === 409) {
+          errorMsg = `📁 Duplicate File: ${detail}`;
+        } else if (status === 429) {
+          errorMsg = '⏱️ Too many uploads. Please wait a minute and try again.';
+        } else if (status === 400) {
+          errorMsg = detail || '❌ Invalid file. Please check the file type and try again.';
+        } else {
+          errorMsg = `❌ Upload failed: ${detail || 'Unknown error'}`;
+        }
+      } else if (error.request) {
+        errorMsg = '🔌 Cannot reach server. Please check if the backend is running.';
+      }
+
+      alert(errorMsg);
+      setTimeout(() => setUploadStatus('idle'), 2000);
     }
   };
 
@@ -114,7 +170,38 @@ export default function App() {
         sources: response.data.sources
       }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '**Error**: Could not reach the agent. Please check if the backend is running.' }]);
+      console.error(error);
+
+      // User-friendly error messages
+      let errorMsg = '**Error**: Something went wrong. ';
+
+      if (error.response) {
+        const status = error.response.status;
+        const detail = error.response.data?.detail || '';
+
+        if (status === 429) {
+          errorMsg = '**⏱️ Rate Limit**: You\'re asking too many questions! Please wait a minute and try again.';
+        } else if (status === 400) {
+          if (detail.includes('too long')) {
+            errorMsg = '**📏 Question Too Long**: Please keep your question under 500 characters.';
+          } else if (detail.includes('empty')) {
+            errorMsg = '**❌ Empty Question**: Please type a question first.';
+          } else {
+            errorMsg = `**❌ Invalid Request**: ${detail}`;
+          }
+        } else if (status === 500) {
+          errorMsg = '**🔧 Server Error**: The AI encountered an issue. Please try rephrasing your question or contact support.';
+        } else {
+          errorMsg = `**Error**: ${detail || 'Unknown error occurred'}`;
+        }
+      } else if (error.request) {
+        errorMsg = '**🔌 Connection Error**: Cannot reach the server. Please check if the backend is running on port 8000.';
+      }
+
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: errorMsg
+      }]);
     } finally {
       setIsThinking(false);
     }
@@ -142,7 +229,10 @@ export default function App() {
         <div className="p-3 flex-1 overflow-y-auto">
           {/* New Chat */}
           <button
-            onClick={() => setMessages([])}
+            onClick={() => {
+              setMessages([]);
+              localStorage.removeItem('chatHistory');
+            }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#2F2F2F] hover:bg-[#424242] transition-all mb-6 text-sm font-medium group"
           >
             <MessageSquarePlus size={18} className="text-blue-400 group-hover:text-blue-300" />
@@ -178,6 +268,21 @@ export default function App() {
             </button>
 
             {/* Status Feedback */}
+            {uploadStatus === 'uploading' && (
+              <div className="mt-2 mx-1 px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded text-xs text-blue-400">
+                <div className="flex items-center justify-between mb-1">
+                  <span>Uploading...</span>
+                  <span className="font-mono">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-[#333] rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-blue-500 h-full transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             {uploadStatus === 'success' && (
               <div className="mt-2 mx-1 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded text-xs text-green-400 flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
@@ -188,22 +293,33 @@ export default function App() {
 
           {/* Files List */}
           <div className="space-y-1">
-            {files.map((file, i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2.5 text-sm text-[#CCC] hover:bg-[#2F2F2F] rounded-lg group transition-colors cursor-default justify-between">
-                <div className="flex items-center gap-3 truncate">
-                  <FileText size={16} className="shrink-0 text-[#666] group-hover:text-blue-400 transition-colors" />
-                  <span className="truncate">{file}</span>
+            {filesLoading ? (
+              // Skeleton loaders
+              <>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2.5 animate-pulse">
+                    <div className="w-4 h-4 bg-[#333] rounded shrink-0"></div>
+                    <div className="h-3 bg-[#333] rounded flex-1"></div>
+                  </div>
+                ))}
+              </>
+            ) : files.length > 0 ? (
+              files.map((file, i) => (
+                <div key={i} className="flex items-center gap-3 px-3 py-2.5 text-sm text-[#CCC] hover:bg-[#2F2F2F] rounded-lg group transition-colors cursor-default justify-between">
+                  <div className="flex items-center gap-3 truncate">
+                    <FileText size={16} className="shrink-0 text-[#666] group-hover:text-blue-400 transition-colors" />
+                    <span className="truncate">{file}</span>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteFile(file, e)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded transition-all text-[#666]"
+                    title="Delete file"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
-                <button
-                  onClick={(e) => handleDeleteFile(file, e)}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded transition-all text-[#666]"
-                  title="Delete file"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-            {files.length === 0 && (
+              ))
+            ) : (
               <p className="text-xs text-[#555] px-3 py-2 italic text-center">No documents uploaded</p>
             )}
           </div>
@@ -330,10 +446,10 @@ export default function App() {
                       handleSendMessage(e);
                     }
                   }}
-                  placeholder="Ask anything about your documents..."
+                  placeholder={files.length === 0 ? "Upload documents first to start asking questions..." : "Ask anything about your documents..."}
                   className="w-full bg-transparent text-[#ECECEC] placeholder-[#777] resize-none outline-none max-h-[200px] min-h-[24px] py-1"
                   rows={1}
-                  disabled={isThinking}
+                  disabled={isThinking || files.length === 0}
                   style={{ height: 'auto', minHeight: '24px' }}
                   onInput={(e) => {
                     e.target.style.height = 'auto';
@@ -342,14 +458,18 @@ export default function App() {
                 />
                 <button
                   type="submit"
-                  disabled={!input.trim() || isThinking}
+                  disabled={!input.trim() || isThinking || files.length === 0}
                   className="p-2 mb-0.5 rounded-lg bg-white text-black disabled:bg-[#444] disabled:text-[#888] transition-all hover:opacity-90 flex-shrink-0"
                 >
                   {isThinking ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               </form>
-              <div className="text-center text-xs text-[#666] mt-3 font-medium">
-                AI can provide real-time reasoning based on your data. Verify important information.
+              <div className="text-center text-xs mt-3 font-medium">
+                {files.length === 0 ? (
+                  <span className="text-yellow-500">⚠️ Please upload documents first to start chatting</span>
+                ) : (
+                  <span className="text-[#666]">AI can provide real-time reasoning based on your data. Verify important information.</span>
+                )}
               </div>
             </div>
           </div>

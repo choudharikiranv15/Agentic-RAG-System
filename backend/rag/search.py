@@ -23,19 +23,21 @@ from backend.db.chroma import get_chroma_client
 from backend.rag.embed import get_embeddings
 
 
-def search_documents(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
+def search_documents(query: str, n_results: int = 5, min_score: float = 0.3) -> List[Dict[str, Any]]:
     """
     Search for documents relevant to the query using vector similarity.
     
     Args:
         query: The search query (e.g., "What is the submission deadline?")
         n_results: Number of results to return (default: 5)
+        min_score: Minimum similarity score threshold (default: 0.3)
+                   Lower scores = less relevant. Range: 0.0 to 1.0
         
     Returns:
         List of dictionaries with 'content' and 'metadata' keys
         
     Example:
-        results = search_documents("What is RAG?", n_results=3)
+        results = search_documents("What is RAG?", n_results=3, min_score=0.4)
         for result in results:
             print(result['content'])
             print(result['metadata']['source'])
@@ -52,21 +54,34 @@ def search_documents(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
             embedding_function=embedding_function,
         )
         
-        # Perform similarity search
-        results = vector_store.similarity_search(query, k=n_results)
+        # Perform similarity search with scores
+        results_with_scores = vector_store.similarity_search_with_score(query, k=n_results * 2)
         
-        # Format results
-        formatted_results = [
-            {
-                "content": res.page_content,
-                "metadata": res.metadata
-            }
-            for res in results
-        ]
+        # Filter by minimum score threshold
+        # Note: ChromaDB uses distance (lower is better), so we need to convert
+        # For L2 distance, we can use: similarity ≈ 1 / (1 + distance)
+        filtered_results = []
+        for doc, distance in results_with_scores:
+            # Convert distance to similarity score (0-1 range)
+            similarity = 1 / (1 + distance)
+            
+            if similarity >= min_score:
+                filtered_results.append({
+                    "content": doc.page_content,
+                    "metadata": doc.metadata,
+                    "score": similarity
+                })
         
-        print(f"   [OK] Found {len(formatted_results)} relevant chunks")
+        # Limit to n_results after filtering
+        filtered_results = filtered_results[:n_results]
         
-        return formatted_results
+        if filtered_results:
+            print(f"   [OK] Found {len(filtered_results)} relevant chunks (min score: {min_score:.2f})")
+            print(f"   [INFO] Score range: {filtered_results[-1]['score']:.3f} - {filtered_results[0]['score']:.3f}")
+        else:
+            print(f"   [WARN] No results above threshold {min_score:.2f}")
+        
+        return filtered_results
         
     except Exception as e:
         print(f"   [ERROR] Error searching documents: {e}")
