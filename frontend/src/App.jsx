@@ -466,49 +466,55 @@ export default function App() {
                       </ReactMarkdown>
 
                       {/* 3. Enhanced Sources Grid (Collapsible) */}
-                      {msg.sources && msg.sources.length > 0 && (
-                        <div className="mt-4 pt-2 border-t border-[#333]">
-                          <details className="group/sources">
-                            <summary className="flex items-center gap-2 cursor-pointer py-2 select-none text-[#888] hover:text-[#CCC] transition-colors">
-                              <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider">
-                                <Database size={12} className="text-blue-500" />
-                                <span>Verified References ({msg.sources.length})</span>
-                              </div>
-                              <ChevronRight size={12} className="ml-auto group-open/sources:rotate-90 transition-transform opacity-50" />
-                            </summary>
+                      {msg.sources && msg.sources.length > 0 && (() => {
+                        // 1. Calculate Groups FIRST
+                        const groupedSources = {};
+                        msg.sources.forEach(sourceString => {
+                          // Clean the source string: remove "[Source: " and "]" and surrounding whitespace
+                          let cleanSource = sourceString.replace(/^\[Source:\s*/, '').replace(/\]$/, '').trim();
+                          let filename = cleanSource;
+                          let page = null;
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 animate-in slide-in-from-top-2 duration-300 pb-2">
-                              {(() => {
-                                // Group sources by filename
-                                const groupedSources = {};
-                                msg.sources.forEach(sourceString => {
-                                  // Clean the source string: remove "[Source: " and "]" and surrounding whitespace
-                                  let cleanSource = sourceString.replace(/^\[Source:\s*/, '').replace(/\]$/, '').trim();
+                          // Check pattern: "Filename (Page X)" OR "Filename, Page X"
+                          const pageMatch = filename.match(/(.*?)(?:,?\s*\(?Page\s*(\d+)\)?)$/i);
 
-                                  let filename = cleanSource;
-                                  let page = null;
+                          if (pageMatch) {
+                            filename = pageMatch[1].trim();
+                            page = pageMatch[2];
+                          } else {
+                            if (filename.includes(',')) {
+                              filename = filename.split(',')[0].trim();
+                            }
+                          }
 
-                                  // Check for Page number pattern: "Filename (Page X)"
-                                  const pageMatch = filename.match(/(.*?) \(Page (\d+)\)$/);
-                                  if (pageMatch) {
-                                    filename = pageMatch[1];
-                                    page = pageMatch[2];
-                                  } else {
-                                    // If no page match, just ensure we just get the filename from path if present
-                                    if (filename.includes('/') || filename.includes('\\')) {
-                                      filename = filename.split(/[/\\]/).pop();
-                                    }
-                                  }
+                          if (filename.includes('/') || filename.includes('\\')) {
+                            filename = filename.split(/[/\\]/).pop();
+                          }
 
-                                  if (!groupedSources[filename]) {
-                                    groupedSources[filename] = { pages: new Set(), original: sourceString };
-                                  }
-                                  if (page) {
-                                    groupedSources[filename].pages.add(page);
-                                  }
-                                });
+                          if (!groupedSources[filename]) {
+                            groupedSources[filename] = { pages: new Set(), original: sourceString };
+                          }
+                          if (page) {
+                            groupedSources[filename].pages.add(page);
+                          }
+                        });
 
-                                return Object.keys(groupedSources).map((filename, i) => {
+                        const uniqueFileCount = Object.keys(groupedSources).length;
+
+                        // 2. Render Component
+                        return (
+                          <div className="mt-4 pt-2 border-t border-[#333]">
+                            <details className="group/sources">
+                              <summary className="flex items-center gap-2 cursor-pointer py-2 select-none text-[#888] hover:text-[#CCC] transition-colors">
+                                <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider">
+                                  <Database size={12} className="text-blue-500" />
+                                  <span>Verified References ({uniqueFileCount})</span>
+                                </div>
+                                <ChevronRight size={12} className="ml-auto group-open/sources:rotate-90 transition-transform opacity-50" />
+                              </summary>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 animate-in slide-in-from-top-2 duration-300 pb-2">
+                                {Object.keys(groupedSources).map((filename, i) => {
                                   const source = groupedSources[filename];
                                   const pages = Array.from(source.pages).sort((a, b) => Number(a) - Number(b));
                                   const label = pages.length > 0
@@ -531,12 +537,12 @@ export default function App() {
                                       </div>
                                     </div>
                                   );
-                                });
-                              })()}
-                            </div>
-                          </details>
-                        </div>
-                      )}
+                                })}
+                              </div>
+                            </details>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
