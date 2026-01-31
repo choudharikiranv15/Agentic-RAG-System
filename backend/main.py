@@ -214,7 +214,7 @@ async def upload_files(request: Request, files: List[UploadFile] = File(...)):
 # Chat endpoint
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("20/minute")  # Max 20 chat requests per minute
-async def chat(http_request: Request, request: ChatRequest):
+async def chat(request: Request, chat_data: ChatRequest):
     """
     Ask a question and get an AI-generated answer based on ingested documents.
     
@@ -223,23 +223,23 @@ async def chat(http_request: Request, request: ChatRequest):
     2. Use LLM to generate answer
     3. Cite sources
     """
-    if not request.question or len(request.question.strip()) == 0:
+    if not chat_data.question or len(chat_data.question.strip()) == 0:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     
     # Validate question length (max 500 characters)
     MAX_QUESTION_LENGTH = 500
-    if len(request.question) > MAX_QUESTION_LENGTH:
+    if len(chat_data.question) > MAX_QUESTION_LENGTH:
         raise HTTPException(
             status_code=400, 
-            detail=f"Question too long ({len(request.question)} chars). Maximum is {MAX_QUESTION_LENGTH} characters."
+            detail=f"Question too long ({len(chat_data.question)} chars). Maximum is {MAX_QUESTION_LENGTH} characters."
         )
     
     try:
         # Get answer from agent
         result = ask_question(
-            request.question,
+            chat_data.question,
             verbose=False,
-            provider=request.provider
+            provider=chat_data.provider
         )
         
         return ChatResponse(
@@ -255,7 +255,7 @@ async def chat(http_request: Request, request: ChatRequest):
 # Streaming chat endpoint
 @app.post("/chat/stream")
 @limiter.limit("20/minute")  # Max 20 streaming requests per minute
-async def chat_stream(http_request: Request, request: ChatRequest):
+async def chat_stream(request: Request, chat_data: ChatRequest):
     """
     Streaming version of the chat endpoint.
 
@@ -265,15 +265,15 @@ async def chat_stream(http_request: Request, request: ChatRequest):
     - type: "answer" - The generated answer
     - type: "done" - Stream complete
     """
-    if not request.question or len(request.question.strip()) == 0:
+    if not chat_data.question or len(chat_data.question.strip()) == 0:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     
     # Validate question length
     MAX_QUESTION_LENGTH = 500
-    if len(request.question) > MAX_QUESTION_LENGTH:
+    if len(chat_data.question) > MAX_QUESTION_LENGTH:
         raise HTTPException(
             status_code=400,
-            detail=f"Question too long ({len(request.question)} chars). Maximum is {MAX_QUESTION_LENGTH} characters."
+            detail=f"Question too long ({len(chat_data.question)} chars). Maximum is {MAX_QUESTION_LENGTH} characters."
         )
 
     async def generate():
@@ -285,7 +285,7 @@ async def chat_stream(http_request: Request, request: ChatRequest):
             from backend.rag.search import search_documents
 
             # Search for relevant documents
-            search_results = search_documents(request.question, n_results=5)
+            search_results = search_documents(chat_data.question, n_results=5)
 
             if not search_results:
                 yield f"data: {json.dumps({'type': 'answer', 'content': 'I could not find any relevant information in the documents.'})}\n\n"
@@ -308,9 +308,9 @@ async def chat_stream(http_request: Request, request: ChatRequest):
             yield f"data: {json.dumps({'type': 'thinking', 'message': 'Generating answer...'})}\n\n"
 
             result = ask_question(
-                request.question,
+                chat_data.question,
                 verbose=False,
-                provider=request.provider
+                provider=chat_data.provider
             )
 
             # Step 4: Send answer

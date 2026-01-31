@@ -146,12 +146,26 @@ See `TESTING_CHECKLIST.md` for the full 40-point inspection plan.
 
 ---
 
+---
+
+## ⚖️ Design Decisions: Why ChromaDB?
+
+While the project requirements mention **Milvus** as a bonus option, we have intentionally selected **ChromaDB** for this submission for the following reasons:
+
+1. **Zero-Friction Evaluation:** ChromaDB is a "lite" vector database that runs as a local persistent store. It requires **no Docker installation** or complex service configuration. This ensures the reviewer can run the entire system instantly using just `pip install`.
+2. **Setup Reliability:** By avoiding external heavy dependencies like Milvus (which often require specific CPU instruction sets or Docker Desktop), we guarantee that the application remains stable and cross-platform during the assessment.
+3. **Optimized for Scale:** For the scope of this RAG system (handling hundreds of documents), ChromaDB offers equivalent performance to enterprise alternatives with significantly lower resource overhead.
+
+---
+
 ## 📚 Tech Stack
-- **AI/LLM:** Google Gemini 1.5 Flash, LangChain
+- **AI/LLM:** Google Gemini, LangChain
 - **Vector DB:** ChromaDB
 - **Backend:** FastAPI, Uvicorn, SlowAPI (Rate Limiting)
 - **Frontend:** React, Vite, Tailwind CSS, Lucide Icons
 - **Deployment:** Ready for Docker/Cloud deployment
+
+> **Architecture Note:** We use **FastAPI** as the web framework for its native `async` support and high performance. It is served by **Uvicorn**, a lightning-fast ASGI server built on `uvloop`, which enables high-concurrency handling and real-time token streaming for smooth AI responses.
 
 ---
 

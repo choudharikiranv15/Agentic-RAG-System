@@ -17,7 +17,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 
 // API Base URL
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://127.0.0.1:8000';
 
 export default function App() {
   // State
@@ -90,6 +90,22 @@ export default function App() {
     } catch (err) {
       console.error("Failed to delete file", err);
       alert("Failed to delete file");
+    }
+  };
+
+  const handleClearDatabase = async () => {
+    if (!confirm("⚠️ This will delete ALL uploaded documents and search index. Are you sure?")) return;
+
+    setFilesLoading(true);
+    try {
+      await axios.delete(`${API_URL}/clear`);
+      setFiles([]);
+      alert("✅ Knowledge base cleared successfully.");
+    } catch (err) {
+      console.error("Failed to clear database", err);
+      alert("Failed to clear database");
+    } finally {
+      setFilesLoading(false);
     }
   };
 
@@ -244,10 +260,21 @@ export default function App() {
 
           {/* Upload Section */}
           <div className="mb-6">
-            <h3 className="text-xs font-bold text-[#888] uppercase px-3 mb-3 tracking-wider flex items-center gap-2">
-              <Sparkles size={12} className="text-yellow-500" />
-              Source Documents
-            </h3>
+            <div className="flex items-center justify-between px-3 mb-3">
+              <h3 className="text-xs font-bold text-[#888] uppercase tracking-wider flex items-center gap-2">
+                <Sparkles size={12} className="text-yellow-500" />
+                Source Documents
+              </h3>
+              {files.length > 0 && (
+                <button
+                  onClick={handleClearDatabase}
+                  className="text-[10px] text-[#555] hover:text-red-400 transition-colors uppercase font-bold"
+                  title="Wipe everything"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
 
             <button
               onClick={() => fileInputRef.current?.click()}
