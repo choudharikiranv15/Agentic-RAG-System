@@ -40,7 +40,7 @@ graph TD
         
         API -->|5. Query| Agent[ReAct Agent]
         Agent -->|6. Plan & Search| DB
-        Agent -->|7. Synthesize| LLM[Gemini 1.5 Flash]
+        Agent -->|7. Synthesize| LLM[LLM]
         LLM -->|8. Stream Answer| API
     end
     
