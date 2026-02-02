@@ -118,21 +118,22 @@ See `TESTING_CHECKLIST.md` for the full 40-point inspection plan.
 
 ```
 ├── docs/
-│   └── SYSTEM_DESIGN.md # System Architecture & Design Document
+│   └── SYSTEM_DESIGN.md    # System Architecture & Design Document
 ├── backend/
-│   ├── agents/          # AI Agent Logic (Planner, Retriever, Validator)
-│   ├── rag/             # RAG Pipeline (Ingest, Search, Embed)
-│   ├── loaders/         # Document parsers (PDF, DOCX, PPTX, XLSX, TXT)
-│   ├── mcp/             # MCP Server for external AI tool integration
-│   ├── db/              # Database connections (ChromaDB)
-│   └── main.py          # FastAPI Application
+│   ├── agents/             # AI Agents (Planner, Retriever, Validator)
+│   ├── rag/                # RAG Pipeline (Ingest, Search, Embed)
+│   ├── loaders/            # Document Loaders (PDF, DOCX, PPTX, XLSX, TXT)
+│   ├── mcp/                # MCP Server for Claude/Cursor integration
+│   ├── db/                 # ChromaDB connection
+│   └── main.py             # FastAPI Application
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx      # Main React Component
-│   │   └── index.css    # Tailwind Styles
+│   │   ├── components/     # React Components (ChatInput, ChatMessage, etc.)
+│   │   ├── App.jsx         # Main React Component
+│   │   └── index.css       # Tailwind Styles
 │   └── package.json
-├── chroma_db/           # Persistent Vector Store
-└── requirements.txt     # Python Dependencies
+├── chroma_db/              # Persistent Vector Store (auto-created)
+└── requirements.txt        # Python Dependencies
 ```
 
 ---
