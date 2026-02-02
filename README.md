@@ -9,7 +9,8 @@ An intelligent, secure, and production-ready document question-answering system 
 | Resource | Link |
 |----------|------|
 | **Demo Video** | [Watch on Google Drive](https://drive.google.com/file/d/1rcnyq6D-z1jjF20YbfwekukMzT8puRDC/view?usp=drive_link) |
-| **System Design Document** | [View System Design](./docs/SYSTEM_DESIGN.md) |
+| **System Design Document (PDF)** | [Download PDF](https://drive.google.com/file/d/1MlYHMmSUimPeSropu3sqAosJib07bUKa/view?usp=drive_link) |
+| **System Design Document (Markdown)** | [View on GitHub](./docs/SYSTEM_DESIGN.md) |
 
 ---
 
