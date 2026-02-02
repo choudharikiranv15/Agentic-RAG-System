@@ -35,31 +35,23 @@ An intelligent, secure, and production-ready document question-answering system 
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-```mermaid
-graph TD
-    User[User] -->|Uploads File| API[FastAPI Backend]
-    User -->|Asks Question| API
-    
-    subgraph "Backend System"
-        API -->|1. Validate & Rate Limit| Val[Validator]
-        Val -->|2. Process File| Loader[Document Loaders]
-        Loader -->|3. Chunk & Embed| Embed[Embedding Model]
-        Embed -->|4. Store| DB[(ChromaDB)]
-        
-        API -->|5. Query| Agent[ReAct Agent]
-        Agent -->|6. Plan & Search| DB
-        Agent -->|7. Synthesize| LLM[LLM]
-        LLM -->|8. Stream Answer| API
-    end
-    
-    subgraph "Frontend"
-        React[React + Vite]
-        Tailwind[Tailwind CSS]
-        State[Local Storage]
-    end
 ```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│   Frontend  │◄────►│   FastAPI   │◄────►│   Gemini    │
+│   (React)   │      │   Backend   │      │    LLM      │
+└─────────────┘      └──────┬──────┘      └─────────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+        ┌──────────┐  ┌──────────┐  ┌──────────┐
+        │ Document │  │  Agentic │  │ ChromaDB │
+        │ Loaders  │  │  Agents  │  │ (Vectors)│
+        └──────────┘  └──────────┘  └──────────┘
+```
+
+**Flow:** User uploads documents → Loaders extract text → Chunked & embedded → Stored in ChromaDB → User asks question → Agents search & retrieve → LLM generates answer with citations
 
 ---
 
