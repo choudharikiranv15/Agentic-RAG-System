@@ -174,4 +174,3 @@ While the project requirements mention **Milvus** as a bonus option, we have int
 
 ---
 
-*Built with ❤️ for the AI Engineer Assignment*
