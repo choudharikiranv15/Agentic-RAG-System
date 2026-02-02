@@ -1,8 +1,17 @@
-# 🤖 Agentic RAG System
+# Agentic RAG System
 
 An intelligent, secure, and production-ready document question-answering system powered by AI agents, vector databases, and modern web technologies.
 
-![App Screenshot](https://via.placeholder.com/800x400?text=Agentic+RAG+System+UI)
+---
+
+## Submission Links
+
+| Resource | Link |
+|----------|------|
+| **Demo Video** | [Watch on Google Drive](https://drive.google.com/file/d/1rcnyq6D-z1jjF20YbfwekukMzT8puRDC/view?usp=drive_link) |
+| **System Design Document** | [View System Design](./docs/SYSTEM_DESIGN.md) |
+
+---
 
 ## 🎯 Features
 
@@ -112,14 +121,17 @@ See `TESTING_CHECKLIST.md` for the full 40-point inspection plan.
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
+├── docs/
+│   └── SYSTEM_DESIGN.md # System Architecture & Design Document
 ├── backend/
-│   ├── agents/          # AI Agent Logic (Planner, Retriever)
+│   ├── agents/          # AI Agent Logic (Planner, Retriever, Validator)
 │   ├── rag/             # RAG Pipeline (Ingest, Search, Embed)
-│   ├── loaders/         # Document parsers (PDF, DOCX, etc.)
-│   ├── db/              # Database connections
+│   ├── loaders/         # Document parsers (PDF, DOCX, PPTX, XLSX, TXT)
+│   ├── mcp/             # MCP Server for external AI tool integration
+│   ├── db/              # Database connections (ChromaDB)
 │   └── main.py          # FastAPI Application
 ├── frontend/
 │   ├── src/
