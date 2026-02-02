@@ -33,7 +33,10 @@ def get_chroma_client():
     This is crucial for a production system.
     """
     os.makedirs(CHROMA_DB_DIR, exist_ok=True)
-    return chromadb.PersistentClient(path=CHROMA_DB_DIR)
+    return chromadb.PersistentClient(
+        path=CHROMA_DB_DIR,
+        settings=Settings(allow_reset=True)
+    )
 
 
 def get_collection(name="rag_collection", embedding_function=None):

@@ -505,21 +505,16 @@ async def clear_database():
     WARNING: This will delete all ingested documents!
     """
     try:
-        import shutil
-
-        if os.path.exists(CHROMA_DB_DIR):
-            shutil.rmtree(CHROMA_DB_DIR)
-            return {
-                "status": "success",
-                "message": "Vector database cleared successfully"
-            }
-        else:
-            return {
-                "status": "success",
-                "message": "Database was already empty"
-            }
+        client = get_chroma_client()
+        client.reset()
+        
+        return {
+            "status": "success",
+            "message": "Vector database cleared successfully"
+        }
 
     except Exception as e:
+        print(f"Error clearing database: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
 
 
